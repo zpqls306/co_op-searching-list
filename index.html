@@ -338,11 +338,11 @@ const GENRE_TAGS = [
 // ---------- CORS 프록시 (경쟁 방식, 가입/키 불필요) ----------
 // corsproxy.io는 계속 401만 내서 제거함
 const CORS_PROXIES = [
-  { name: 'codetabs', build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, timeout: 25000 },
-  { name: 'allorigins-raw', build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, timeout: 20000 },
-  { name: 'allorigins-get', build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, timeout: 20000, wrapped: true },
-  { name: 'deno-proxy', build: url => `https://9sako6-cors-proxy-server.deno.dev?quest=${encodeURIComponent(url)}`, timeout: 15000 },
-  { name: 'thingproxy', build: url => `https://thingproxy.freeboard.io/fetch/${url}`, timeout: 12000 },
+  { name: 'codetabs', build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, timeout: 15000 },
+  { name: 'allorigins-raw', build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, timeout: 12000 },
+  { name: 'allorigins-get', build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, timeout: 12000, wrapped: true },
+  { name: 'deno-proxy', build: url => `https://9sako6-cors-proxy-server.deno.dev?quest=${encodeURIComponent(url)}`, timeout: 10000 },
+  { name: 'thingproxy', build: url => `https://thingproxy.freeboard.io/fetch/${url}`, timeout: 10000 },
 ];
 
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4시간
@@ -405,48 +405,39 @@ function filtersKey(){
   });
 }
 
-// ---------- 프록시 경쟁 fetch ----------
+// ---------- 프록시 순차 시도 (동시에 5개 다 쏘지 않음 — 하나 성공하면 나머지는 요청 안 나감) ----------
 let lastProxyErrors = [];
 
 async function raceFetch(targetUrl){
   lastProxyErrors = [];
-  const attempts = CORS_PROXIES.map(p =>
-    fetch(p.build(targetUrl), { signal: AbortSignal.timeout(p.timeout || 12000) })
-      .then(res => {
-        if(!res.ok){
-          const err = new Error(`HTTP ${res.status}`);
-          err.proxyName = p.name;
-          throw err;
+  for(const p of CORS_PROXIES){
+    try{
+      const res = await fetch(p.build(targetUrl), { signal: AbortSignal.timeout(p.timeout || 12000) });
+      if(!res.ok){
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const text = await res.text();
+      let payload = text;
+      // allorigins-get 처럼 {"contents": "..."} 형태로 감싸서 오는 경우 언랩
+      if(p.wrapped){
+        try{
+          const wrapper = JSON.parse(text);
+          payload = wrapper.contents;
+        }catch(e){
+          throw new Error('wrapped 응답 파싱 실패');
         }
-        return res.text();
-      })
-      .then(text => {
-        let payload = text;
-        // allorigins-get 처럼 {"contents": "..."} 형태로 감싸서 오는 경우 언랩
-        if(p.wrapped){
-          try{
-            const wrapper = JSON.parse(text);
-            payload = wrapper.contents;
-          }catch(e){
-            const err = new Error('wrapped 응답 파싱 실패');
-            err.proxyName = p.name;
-            throw err;
-          }
-        }
-        // 프록시가 200을 줘도 에러 페이지(HTML)를 반환하는 경우가 있어 최소 검증
-        if(!payload || !payload.trim().startsWith('{')){
-          const err = new Error('응답이 JSON이 아님(프록시가 에러 페이지를 반환했을 가능성)');
-          err.proxyName = p.name;
-          throw err;
-        }
-        return payload;
-      })
-      .catch(e => {
-        lastProxyErrors.push(`${p.name}: ${e.message || e}`);
-        throw e;
-      })
-  );
-  return await Promise.any(attempts);
+      }
+      // 프록시가 200을 줘도 에러 페이지(HTML)를 반환하는 경우가 있어 최소 검증
+      if(!payload || !payload.trim().startsWith('{')){
+        throw new Error('응답이 JSON이 아님(프록시가 에러 페이지를 반환했을 가능성)');
+      }
+      return payload;
+    } catch(e){
+      lastProxyErrors.push(`${p.name}: ${e.message || e}`);
+      // 다음 프록시로 넘어감
+    }
+  }
+  throw new Error('모든 프록시 실패');
 }
 
 // 전부 실패하면 1.5초 쉬었다가 한 번 더 시도 (일시적인 지연/혼잡이었을 경우 구제)
