@@ -336,9 +336,10 @@ const GENRE_TAGS = [
 ];
 
 const CORS_PROXIES = [
-  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  { name: 'corsproxy.io', build: url => `https://corsproxy.io/?url=${encodeURIComponent(url)}` },
+  { name: 'allorigins', build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
+  { name: 'codetabs', build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` },
+  { name: 'thingproxy', build: url => `https://thingproxy.freeboard.io/fetch/${url}` },
 ];
 
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4시간
@@ -402,10 +403,33 @@ function filtersKey(){
 }
 
 // ---------- 프록시 경쟁 fetch ----------
+let lastProxyErrors = [];
+
 async function raceFetch(targetUrl){
-  const attempts = CORS_PROXIES.map(build =>
-    fetch(build(targetUrl), { signal: AbortSignal.timeout(12000) })
-      .then(res => { if(!res.ok) throw new Error('bad status'); return res.text(); })
+  lastProxyErrors = [];
+  const attempts = CORS_PROXIES.map(p =>
+    fetch(p.build(targetUrl), { signal: AbortSignal.timeout(12000) })
+      .then(res => {
+        if(!res.ok){
+          const err = new Error(`HTTP ${res.status}`);
+          err.proxyName = p.name;
+          throw err;
+        }
+        return res.text();
+      })
+      .then(text => {
+        // 프록시가 200을 줘도 에러 페이지(HTML)를 반환하는 경우가 있어 최소 검증
+        if(!text || (!text.trim().startsWith('{') )){
+          const err = new Error('응답이 JSON이 아님(프록시가 에러 페이지를 반환했을 가능성)');
+          err.proxyName = p.name;
+          throw err;
+        }
+        return text;
+      })
+      .catch(e => {
+        lastProxyErrors.push(`${p.name}: ${e.message || e}`);
+        throw e;
+      })
   );
   return await Promise.any(attempts);
 }
@@ -559,14 +583,17 @@ async function runSearch(start, append){
     }
     setStatus(`실시간 갱신 완료 · 총 ${total.toLocaleString()}개`);
   } catch(e){
+    const detail = lastProxyErrors.length
+      ? lastProxyErrors.join(' / ')
+      : (e.message || String(e));
     if(cache){
       if(!append) renderCards(cache.items, false);
       toggleLoadMore(false);
       const ageMin = Math.round((Date.now()-cache.timestamp)/60000);
-      setStatus(`실시간 갱신 실패 — ${ageMin}분 전 캐시 표시 중`, 'err');
+      setStatus(`실시간 갱신 실패 (${detail}) — ${ageMin}분 전 캐시 표시 중`, 'err');
     } else {
-      document.getElementById('resultsArea').innerHTML = '<div class="empty">지금은 스팀 데이터를 불러올 수 없어. 잠시 후 다시 시도해줘.</div>';
-      setStatus('실시간 갱신 실패, 캐시도 없음', 'err');
+      document.getElementById('resultsArea').innerHTML = `<div class="empty">지금은 스팀 데이터를 불러올 수 없어.<br><span style="font-size:0.78rem;color:var(--sub)">${detail}</span></div>`;
+      setStatus(`실시간 갱신 실패: ${detail}`, 'err');
       toggleLoadMore(false);
     }
   }
