@@ -338,6 +338,8 @@ const GENRE_TAGS = [
 // ---------- CORS 프록시 (경쟁 방식, 가입/키 불필요) ----------
 // corsproxy.io는 계속 401만 내서 제거함
 const CORS_PROXIES = [
+  { name: 'blkproxy', build: url => `https://blkproxy.iambhvsh.in/api/proxy?url=${encodeURIComponent(url)}`, timeout: 12000 },
+  { name: 'cors.lol', build: url => `https://api.cors.lol/url=${url}`, timeout: 12000 },
   { name: 'codetabs', build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, timeout: 15000 },
   { name: 'allorigins-raw', build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, timeout: 12000 },
   { name: 'allorigins-get', build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, timeout: 12000, wrapped: true },
