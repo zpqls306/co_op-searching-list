@@ -335,15 +335,18 @@ const GENRE_TAGS = [
   { id: 1695,label: '오픈월드' },
 ];
 
+// ---------- CORS 프록시 (경쟁 방식, 가입/키 불필요) ----------
+// corsproxy.io는 계속 401만 내서 제거함
 const CORS_PROXIES = [
-  { name: 'corsproxy.io', build: url => `https://corsproxy.io/?url=${encodeURIComponent(url)}` },
-  { name: 'allorigins', build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
-  { name: 'codetabs', build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` },
-  { name: 'thingproxy', build: url => `https://thingproxy.freeboard.io/fetch/${url}` },
+  { name: 'codetabs', build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, timeout: 25000 },
+  { name: 'allorigins-raw', build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, timeout: 20000 },
+  { name: 'allorigins-get', build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, timeout: 20000, wrapped: true },
+  { name: 'deno-proxy', build: url => `https://9sako6-cors-proxy-server.deno.dev?quest=${encodeURIComponent(url)}`, timeout: 15000 },
+  { name: 'thingproxy', build: url => `https://thingproxy.freeboard.io/fetch/${url}`, timeout: 12000 },
 ];
 
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4시간
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 25; // 스팀이 만들어야 할 HTML 양을 줄여서 응답 속도 개선 (기존 50)
 
 // ---------- 상태 ----------
 let selectedCoop = new Set([9]); // 기본: 협동 전체
@@ -408,7 +411,7 @@ let lastProxyErrors = [];
 async function raceFetch(targetUrl){
   lastProxyErrors = [];
   const attempts = CORS_PROXIES.map(p =>
-    fetch(p.build(targetUrl), { signal: AbortSignal.timeout(12000) })
+    fetch(p.build(targetUrl), { signal: AbortSignal.timeout(p.timeout || 12000) })
       .then(res => {
         if(!res.ok){
           const err = new Error(`HTTP ${res.status}`);
@@ -418,13 +421,25 @@ async function raceFetch(targetUrl){
         return res.text();
       })
       .then(text => {
+        let payload = text;
+        // allorigins-get 처럼 {"contents": "..."} 형태로 감싸서 오는 경우 언랩
+        if(p.wrapped){
+          try{
+            const wrapper = JSON.parse(text);
+            payload = wrapper.contents;
+          }catch(e){
+            const err = new Error('wrapped 응답 파싱 실패');
+            err.proxyName = p.name;
+            throw err;
+          }
+        }
         // 프록시가 200을 줘도 에러 페이지(HTML)를 반환하는 경우가 있어 최소 검증
-        if(!text || (!text.trim().startsWith('{') )){
+        if(!payload || !payload.trim().startsWith('{')){
           const err = new Error('응답이 JSON이 아님(프록시가 에러 페이지를 반환했을 가능성)');
           err.proxyName = p.name;
           throw err;
         }
-        return text;
+        return payload;
       })
       .catch(e => {
         lastProxyErrors.push(`${p.name}: ${e.message || e}`);
@@ -432,6 +447,19 @@ async function raceFetch(targetUrl){
       })
   );
   return await Promise.any(attempts);
+}
+
+// 전부 실패하면 1.5초 쉬었다가 한 번 더 시도 (일시적인 지연/혼잡이었을 경우 구제)
+async function raceFetchWithRetry(targetUrl, retriesLeft = 1){
+  try{
+    return await raceFetch(targetUrl);
+  } catch(e){
+    if(retriesLeft > 0){
+      await new Promise(r => setTimeout(r, 1500));
+      return raceFetchWithRetry(targetUrl, retriesLeft - 1);
+    }
+    throw e;
+  }
 }
 
 // ---------- 결과 파싱 ----------
@@ -566,7 +594,7 @@ async function runSearch(start, append){
 
   try{
     const url = buildSteamUrl(start);
-    const text = await raceFetch(url);
+    const text = await raceFetchWithRetry(url);
     const { items, total } = parseResults(text);
     currentTotal = total;
 
