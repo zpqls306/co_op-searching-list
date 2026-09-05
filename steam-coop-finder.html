@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>코업 파인더 — 친구랑 할 게임 찾기</title>
+<style>
+  :root{
+    --bg:#14171c;
+    --panel:#1c2027;
+    --panel2:#22262e;
+    --border:#2e333c;
+    --text:#e8eaed;
+    --sub:#9099a6;
+    --accent:#7cd992;
+    --accent-dim:#4f7a5c;
+    --amber:#e8a33d;
+    --danger:#e2645a;
+    --font-head:"Space Grotesk","Pretendard",-apple-system,sans-serif;
+    --font-body:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    line-height:1.5;
+  }
+  @font-face{
+    font-family:"Space Grotesk";
+    src:local("Space Grotesk");
+  }
+  header{
+    padding:28px 24px 20px;
+    border-bottom:1px solid var(--border);
+  }
+  header h1{
+    font-family:var(--font-head);
+    font-weight:700;
+    font-size:1.6rem;
+    margin:0 0 4px;
+    letter-spacing:-0.01em;
+  }
+  header h1 .dot{color:var(--accent);}
+  header p{
+    margin:0;
+    color:var(--sub);
+    font-size:0.92rem;
+  }
+  .wrap{
+    max-width:1180px;
+    margin:0 auto;
+    padding:0 24px 60px;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:18px 20px;
+    margin-top:20px;
+  }
+  .section-label{
+    font-size:0.78rem;
+    color:var(--sub);
+    margin:0 0 8px;
+    font-weight:600;
+  }
+  .chip-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:16px;
+  }
+  .chip{
+    border:1px solid var(--border);
+    background:var(--panel2);
+    color:var(--sub);
+    padding:6px 12px;
+    border-radius:4px;
+    font-size:0.85rem;
+    cursor:pointer;
+    user-select:none;
+    transition:border-color .12s, color .12s, background .12s;
+  }
+  .chip:hover{border-color:var(--accent-dim);}
+  .chip.active{
+    background:rgba(124,217,146,0.12);
+    border-color:var(--accent);
+    color:var(--accent);
+  }
+  .row-flex{
+    display:flex;
+    flex-wrap:wrap;
+    gap:20px;
+    align-items:flex-end;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  select, input[type="text"]{
+    background:var(--panel2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:8px 10px;
+    border-radius:4px;
+    font-size:0.88rem;
+    font-family:var(--font-body);
+  }
+  .toggle-line{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:0.88rem;
+    color:var(--sub);
+    cursor:pointer;
+  }
+  .toggle-line input{accent-color:var(--accent);width:16px;height:16px;}
+  button.primary{
+    background:var(--accent);
+    color:#0c130f;
+    border:none;
+    padding:10px 20px;
+    border-radius:4px;
+    font-weight:700;
+    font-size:0.9rem;
+    cursor:pointer;
+  }
+  button.primary:hover{filter:brightness(1.08);}
+  button.ghost{
+    background:transparent;
+    border:1px solid var(--border);
+    color:var(--sub);
+    padding:10px 16px;
+    border-radius:4px;
+    font-size:0.85rem;
+    cursor:pointer;
+  }
+  button.ghost:hover{border-color:var(--accent-dim);color:var(--text);}
+  .status-line{
+    margin-top:14px;
+    font-size:0.8rem;
+    color:var(--sub);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .status-line .cached{color:var(--amber);}
+  .status-line .err{color:var(--danger);}
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+    gap:14px;
+    margin-top:22px;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:6px;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    text-decoration:none;
+    color:var(--text);
+  }
+  .card img{
+    width:100%;
+    aspect-ratio:460/215;
+    object-fit:cover;
+    background:var(--panel2);
+    display:block;
+  }
+  .card-body{
+    padding:12px 14px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    flex:1;
+  }
+  .card-title{
+    font-weight:700;
+    font-size:0.98rem;
+    line-height:1.3;
+  }
+  .card-meta{
+    font-size:0.76rem;
+    color:var(--sub);
+  }
+  .tag-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:5px;
+  }
+  .tag-badge{
+    font-size:0.7rem;
+    padding:2px 7px;
+    border-radius:3px;
+    background:rgba(124,217,146,0.1);
+    color:var(--accent);
+    border:1px solid var(--accent-dim);
+  }
+  .price-row{
+    margin-top:auto;
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    justify-content:flex-end;
+  }
+  .price-orig{
+    text-decoration:line-through;
+    color:var(--sub);
+    font-size:0.8rem;
+  }
+  .price-final{
+    font-weight:700;
+    font-size:1rem;
+  }
+  .discount-badge{
+    background:var(--accent);
+    color:#0c130f;
+    font-weight:700;
+    font-size:0.78rem;
+    padding:2px 6px;
+    border-radius:3px;
+    margin-right:auto;
+  }
+  .free-badge{
+    color:var(--accent);
+    font-weight:700;
+    font-size:0.95rem;
+  }
+  .empty, .loading{
+    text-align:center;
+    color:var(--sub);
+    padding:60px 20px;
+    font-size:0.9rem;
+  }
+  .loadmore-wrap{
+    text-align:center;
+    margin-top:24px;
+  }
+  footer.note{
+    color:var(--sub);
+    font-size:0.76rem;
+    margin-top:30px;
+    border-top:1px solid var(--border);
+    padding-top:14px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>코업 파인더<span class="dot">.</span></h1>
+  <p>가격 · 장르 · 할인 · 협동 유형으로 필터링해서, 친구랑 할 게임을 빠르게 찾아요.</p>
+</header>
+
+<div class="wrap">
+
+  <div class="panel">
+    <p class="section-label">협동 유형 (하나 이상 선택)</p>
+    <div class="chip-row" id="coopChips"></div>
+
+    <p class="section-label">장르 (여러 개 선택 가능, 선택 안 하면 전체)</p>
+    <div class="chip-row" id="genreChips"></div>
+
+    <div class="row-flex">
+      <div class="field">
+        <label class="section-label" style="margin:0">정렬</label>
+        <select id="sortSelect">
+          <option value="">관련순</option>
+          <option value="Reviews_DESC">리뷰 많은순</option>
+          <option value="Price_ASC">낮은 가격순</option>
+          <option value="Price_DESC">높은 가격순</option>
+          <option value="Released_DESC">최신 출시순</option>
+          <option value="Name_ASC">이름순</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="toggle-line"><input type="checkbox" id="specialsOnly"> 할인 중인 게임만</label>
+      </div>
+      <div class="field" style="flex:1">
+        <label class="section-label" style="margin:0">이름으로 검색 (선택)</label>
+        <input type="text" id="queryText" placeholder="예: 발헤임, 잇 테이크스 투...">
+      </div>
+      <div class="field">
+        <button class="primary" id="searchBtn">검색</button>
+      </div>
+    </div>
+
+    <div class="status-line" id="statusLine"></div>
+  </div>
+
+  <div id="resultsArea">
+    <div class="empty">협동 유형과 장르를 고른 다음 검색을 눌러줘.</div>
+  </div>
+
+  <div class="loadmore-wrap" id="loadMoreWrap" style="display:none">
+    <button class="ghost" id="loadMoreBtn">더 보기</button>
+  </div>
+
+  <footer class="note">
+    스팀 스토어 데이터를 실시간으로 불러와요. 협동 인원수(2인/4인 등)는 스팀이 구조화된 데이터로 제공하지 않아서, 정확한 인원수는 각 게임 페이지에서 확인해야 해요. 가격은 원화 기준이며, 브라우저에만 결과가 캐시돼요(최대 4시간).
+  </footer>
+
+</div>
+
+<script>
+// ---------- 데이터 정의 ----------
+const COOP_CATEGORIES = [
+  { id: 9,  label: '협동 전체' },
+  { id: 38, label: '온라인 협동' },
+  { id: 39, label: '스플릿 스크린 협동' },
+  { id: 48, label: 'LAN 협동' },
+  { id: 44, label: '리모트 플레이 투게더' },
+];
+
+// 장르 태그 id는 카테고리 id와 별개 네임스페이스라 겹치는 숫자(예: 9)가 있어도 문제없음 — tags= 파라미터에만 사용
+const GENRE_TAGS = [
+  { id: 19,  label: '액션' },
+  { id: 21,  label: '어드벤처' },
+  { id: 122, label: 'RPG' },
+  { id: 9,   label: '전략' },
+  { id: 599, label: '시뮬레이션' },
+  { id: 597, label: '캐주얼' },
+  { id: 492, label: '인디' },
+  { id: 699, label: '레이싱' },
+  { id: 701, label: '스포츠' },
+  { id: 1664,label: '퍼즐' },
+  { id: 1663,label: 'FPS' },
+  { id: 1625,label: '플랫포머' },
+  { id: 1695,label: '오픈월드' },
+];
+
+const CORS_PROXIES = [
+  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
+
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4시간
+const PAGE_SIZE = 50;
+
+// ---------- 상태 ----------
+let selectedCoop = new Set([9]); // 기본: 협동 전체
+let selectedGenres = new Set();
+let currentStart = 0;
+let currentCacheKey = '';
+let currentTotal = 0;
+
+// ---------- UI 초기화 ----------
+function renderChips(container, items, selectedSet, singleOrMulti){
+  const el = document.getElementById(container);
+  el.innerHTML = '';
+  items.forEach(item => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (selectedSet.has(item.id) ? ' active' : '');
+    chip.textContent = item.label;
+    chip.onclick = () => {
+      if(selectedSet.has(item.id)){
+        selectedSet.delete(item.id);
+      } else {
+        selectedSet.add(item.id);
+      }
+      chip.classList.toggle('active');
+    };
+    el.appendChild(chip);
+  });
+}
+renderChips('coopChips', COOP_CATEGORIES, selectedCoop);
+renderChips('genreChips', GENRE_TAGS, selectedGenres);
+
+// ---------- 쿼리 빌드 ----------
+function buildSteamUrl(start){
+  const params = new URLSearchParams();
+  params.set('query', document.getElementById('queryText').value.trim());
+  params.set('start', start);
+  params.set('count', PAGE_SIZE);
+  params.set('category1', '998'); // 게임만
+  params.set('infinite', '1');
+  params.set('cc', 'kr');
+  params.set('l', 'koreana');
+  if(selectedCoop.size) params.set('category2', [...selectedCoop].join(','));
+  if(selectedGenres.size) params.set('tags', [...selectedGenres].join(','));
+  if(document.getElementById('specialsOnly').checked) params.set('specials', '1');
+  const sortVal = document.getElementById('sortSelect').value;
+  if(sortVal) params.set('sort_by', sortVal);
+  return `https://store.steampowered.com/search/results/?${params.toString()}`;
+}
+
+function filtersKey(){
+  return JSON.stringify({
+    q: document.getElementById('queryText').value.trim(),
+    coop: [...selectedCoop].sort(),
+    genre: [...selectedGenres].sort(),
+    specials: document.getElementById('specialsOnly').checked,
+    sort: document.getElementById('sortSelect').value,
+  });
+}
+
+// ---------- 프록시 경쟁 fetch ----------
+async function raceFetch(targetUrl){
+  const attempts = CORS_PROXIES.map(build =>
+    fetch(build(targetUrl), { signal: AbortSignal.timeout(12000) })
+      .then(res => { if(!res.ok) throw new Error('bad status'); return res.text(); })
+  );
+  return await Promise.any(attempts);
+}
+
+// ---------- 결과 파싱 ----------
+function parseResults(jsonText){
+  let data;
+  try { data = JSON.parse(jsonText); }
+  catch(e){ throw new Error('파싱 실패'); }
+  if(!data || data.success !== 1) throw new Error('스팀 응답 오류');
+
+  const doc = new DOMParser().parseFromString(data.results_html, 'text/html');
+  const rows = [...doc.querySelectorAll('a.search_result_row')];
+  const items = rows.map(row => {
+    const appid = row.dataset.dsAppid || (row.href.match(/\/app\/(\d+)/) || [])[1] || '';
+    const title = row.querySelector('.title')?.textContent?.trim() || '이름 없음';
+    const released = row.querySelector('.search_released')?.textContent?.trim() || '';
+    const img = row.querySelector('img')?.src || '';
+
+    const priceBlock = row.querySelector('.search_price_discount_combined');
+    let finalPriceCents = priceBlock?.dataset.priceFinal;
+    finalPriceCents = finalPriceCents !== undefined ? parseInt(finalPriceCents, 10) : null;
+
+    const discountEl = row.querySelector('.search_discount span');
+    const discountPct = discountEl?.textContent?.replace(/[^\d]/g,'') || '0';
+
+    const priceTextBlock = row.querySelector('.search_price');
+    let origPriceText = '';
+    if(priceTextBlock){
+      const strike = priceTextBlock.querySelector('strike, [style*="line-through"]');
+      origPriceText = strike?.textContent?.trim() || '';
+    }
+
+    const reviewEl = row.querySelector('.search_reviewscore span[data-tooltip-html]');
+    const tooltipRaw = reviewEl?.getAttribute('data-tooltip-html') || '';
+    const reviewSummary = tooltipRaw.split('<br>')[0]?.trim() || '';
+
+    return {
+      appid, title, released, img,
+      finalPriceCents, discountPct: parseInt(discountPct,10) || 0,
+      origPriceText, reviewSummary,
+      url: `https://store.steampowered.com/app/${appid}/`,
+    };
+  }).filter(it => it.appid);
+
+  return { items, total: data.total_count || items.length };
+}
+
+function formatKrw(cents){
+  if(cents === null || cents === undefined) return '가격 정보 없음';
+  if(cents === 0) return '무료';
+  return Math.round(cents/100).toLocaleString('ko-KR') + '원'; // cc=kr이면 이미 원 단위 정수로 옴 (센트 아님)
+}
+
+// ---------- 렌더링 ----------
+function renderCards(items, append){
+  const area = document.getElementById('resultsArea');
+  let grid = document.getElementById('gameGrid');
+  if(!append || !grid){
+    area.innerHTML = '<div class="grid" id="gameGrid"></div>';
+    grid = document.getElementById('gameGrid');
+  }
+  if(items.length === 0 && !append){
+    area.innerHTML = '<div class="empty">조건에 맞는 게임을 찾지 못했어. 필터를 조금 완화해봐.</div>';
+    return;
+  }
+  const badgeLabels = [...selectedCoop].map(id => COOP_CATEGORIES.find(c=>c.id===id)?.label).filter(Boolean);
+
+  items.forEach(it => {
+    const card = document.createElement('a');
+    card.className = 'card';
+    card.href = it.url;
+    card.target = '_blank';
+    card.rel = 'noopener';
+
+    const priceHtml = it.finalPriceCents === 0
+      ? `<span class="free-badge">무료</span>`
+      : `${it.discountPct > 0 ? `<span class="discount-badge">-${it.discountPct}%</span>` : ''}
+         ${it.origPriceText ? `<span class="price-orig">${it.origPriceText}</span>` : ''}
+         <span class="price-final">${formatKrw(it.finalPriceCents)}</span>`;
+
+    card.innerHTML = `
+      <img src="${it.img}" loading="lazy" alt="${it.title}">
+      <div class="card-body">
+        <div class="card-title">${it.title}</div>
+        <div class="card-meta">${it.released || ''}${it.reviewSummary ? ' · ' + it.reviewSummary : ''}</div>
+        <div class="tag-row">${badgeLabels.map(l=>`<span class="tag-badge">${l}</span>`).join('')}</div>
+        <div class="price-row">${priceHtml}</div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function setStatus(msg, type){
+  const el = document.getElementById('statusLine');
+  el.innerHTML = `<span class="${type||''}">${msg}</span>`;
+}
+
+// ---------- 캐시 ----------
+function readCache(key){
+  try{
+    const raw = localStorage.getItem('coopfinder:'+key);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ return null; }
+}
+function writeCache(key, payload){
+  try{
+    localStorage.setItem('coopfinder:'+key, JSON.stringify(payload));
+  }catch(e){ /* 용량 초과 등은 무시 */ }
+}
+
+// ---------- 검색 실행 ----------
+async function runSearch(start, append){
+  const key = filtersKey();
+  currentCacheKey = key;
+  currentStart = start;
+
+  const cache = readCache(key);
+  const isFresh = cache && (Date.now() - cache.timestamp < CACHE_TTL_MS);
+
+  if(!append && isFresh){
+    renderCards(cache.items, false);
+    currentTotal = cache.total;
+    toggleLoadMore(cache.items.length < cache.total);
+    const ageMin = Math.round((Date.now()-cache.timestamp)/60000);
+    setStatus(`캐시된 결과 (${ageMin}분 전 갱신) · 총 ${cache.total.toLocaleString()}개`, 'cached');
+    return;
+  }
+
+  if(!append) document.getElementById('resultsArea').innerHTML = '<div class="loading">불러오는 중...</div>';
+  setStatus('스팀에서 데이터 불러오는 중...');
+
+  try{
+    const url = buildSteamUrl(start);
+    const text = await raceFetch(url);
+    const { items, total } = parseResults(text);
+    currentTotal = total;
+
+    renderCards(items, append);
+    toggleLoadMore((append ? (grid_count()+items.length) : items.length) < total);
+
+    if(!append){
+      writeCache(key, { timestamp: Date.now(), items, total });
+    } else {
+      const prevCache = readCache(key);
+      if(prevCache){
+        writeCache(key, { timestamp: prevCache.timestamp, items: prevCache.items.concat(items), total });
+      }
+    }
+    setStatus(`실시간 갱신 완료 · 총 ${total.toLocaleString()}개`);
+  } catch(e){
+    if(cache){
+      if(!append) renderCards(cache.items, false);
+      toggleLoadMore(false);
+      const ageMin = Math.round((Date.now()-cache.timestamp)/60000);
+      setStatus(`실시간 갱신 실패 — ${ageMin}분 전 캐시 표시 중`, 'err');
+    } else {
+      document.getElementById('resultsArea').innerHTML = '<div class="empty">지금은 스팀 데이터를 불러올 수 없어. 잠시 후 다시 시도해줘.</div>';
+      setStatus('실시간 갱신 실패, 캐시도 없음', 'err');
+      toggleLoadMore(false);
+    }
+  }
+}
+
+function grid_count(){
+  return document.querySelectorAll('#gameGrid .card').length;
+}
+
+function toggleLoadMore(show){
+  document.getElementById('loadMoreWrap').style.display = show ? 'block' : 'none';
+}
+
+document.getElementById('searchBtn').onclick = () => runSearch(0, false);
+document.getElementById('loadMoreBtn').onclick = () => runSearch(currentStart + PAGE_SIZE, true);
+</script>
+
+</body>
+</html>
