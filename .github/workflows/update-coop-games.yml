@@ -1,0 +1,34 @@
+name: Update Steam Co-op Games Data
+
+on:
+  schedule:
+    # UTC 기준 01:00, 13:00 (한국시간 약 오전 10시, 오후 10시) — 하루 2번
+    - cron: '0 1,13 * * *'
+  workflow_dispatch: {}  # Actions 탭에서 수동 실행 버튼도 사용 가능
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 의존성 설치
+        run: npm install cheerio
+
+      - name: 스팀 협동 게임 데이터 수집
+        run: node scripts/fetch-coop-games.js
+
+      - name: 변경사항 커밋 및 푸시
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/coop-games.json
+          git diff --staged --quiet || git commit -m "chore: 스팀 협동 게임 데이터 자동 갱신"
+          git push
