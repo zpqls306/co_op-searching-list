@@ -404,8 +404,12 @@ function getFilteredSortedGames(){
       if(!hasCoop) return false;
     }
     if(selectedGenres.size > 0){
-      const hasGenre = (g.genres||[]).some(gg => selectedGenres.has(gg.id));
-      if(!hasGenre) return false;
+      const matchedGenres = (g.genres||[]).filter(gg => selectedGenres.has(gg.id));
+      if(matchedGenres.length === 0) return false;
+      // 스팀은 유료 게임에도 "무료 플레이" 장르 태그를 붙여놓는 경우가 종종 있음.
+      // 선택된 장르 중 "무료 플레이" 태그로만 걸린 경우, 실제 가격이 0원이 아니면 제외.
+      const onlyFreeGenreMatched = matchedGenres.every(gg => /무료/.test(gg.description));
+      if(onlyFreeGenreMatched && g.finalPriceCents !== 0) return false;
     }
     if(specialsOnly && g.discountPct <= 0) return false;
     if(q && !g.title.toLowerCase().includes(q)) return false;
