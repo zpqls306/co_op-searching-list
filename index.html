@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>코업 파인더 — 친구랑 할 게임 찾기</title>
+<title>스팀 멀티리스트 — 친구랑 할 게임 찾기</title>
 <style>
   :root{
     --bg:#14171c;
@@ -118,6 +118,7 @@
     cursor:pointer;
   }
   .toggle-line input{accent-color:var(--accent);width:16px;height:16px;}
+  input[type="range"]{accent-color:var(--accent);}
   button.primary{
     background:var(--accent);
     color:#0c130f;
@@ -282,6 +283,10 @@
       <div class="field">
         <label class="toggle-line"><input type="checkbox" id="specialsOnly"> 할인 중인 게임만</label>
       </div>
+      <div class="field">
+        <label class="section-label" style="margin:0" id="maxPriceLabel">최대 가격: 전체</label>
+        <input type="range" id="maxPriceSlider" min="0" max="0" step="1000" style="width:200px">
+      </div>
       <div class="field" style="flex:1">
         <label class="section-label" style="margin:0">이름으로 검색 (선택)</label>
         <input type="text" id="queryText" placeholder="예: 발헤임, 잇 테이크스 투...">
@@ -330,6 +335,7 @@ async function loadData(){
 
     renderChips('coopChips', data.coopCategories || [], selectedCoop);
     renderChips('genreChips', data.genres || [], selectedGenres);
+    setupPriceSlider(allGames);
 
     document.getElementById('resultsArea').innerHTML = '<div class="empty">협동 유형과 장르를 고른 다음 검색을 눌러줘.</div>';
     setStatus(`데이터 갱신: ${formatAge(dataGeneratedAt)} · 총 ${allGames.length.toLocaleString()}개 수집됨`);
@@ -370,7 +376,42 @@ function renderChips(container, items, selectedSet){
   });
 }
 
-// ---------- 필터링/정렬 (전부 클라이언트에서, 네트워크 요청 없음) ----------
+// ---------- 가격 슬라이더 ----------
+let sliderMaxCents = 0; // 슬라이더가 표현하는 최대값(전체 데이터 기준), cents 단위
+let selectedMaxPriceCents = null; // null이면 필터 적용 안 함(전체)
+
+function setupPriceSlider(games){
+  const prices = games.map(g => g.finalPriceCents).filter(v => v !== null && v !== undefined);
+  const maxCents = prices.length ? Math.max(...prices) : 0;
+  // 만 원 단위로 올림해서 슬라이더 상한을 정함
+  sliderMaxCents = Math.ceil(maxCents / 1000000) * 1000000 || 1000000;
+
+  const slider = document.getElementById('maxPriceSlider');
+  slider.min = 0;
+  slider.max = Math.round(sliderMaxCents / 10000); // 슬라이더는 100원 단위 눈금(= /10000)
+  slider.step = 1;
+  slider.value = slider.max;
+  selectedMaxPriceCents = null;
+  updatePriceLabel();
+
+  slider.oninput = () => {
+    const val = parseInt(slider.value, 10);
+    selectedMaxPriceCents = (val >= parseInt(slider.max,10)) ? null : val * 10000;
+    updatePriceLabel();
+  };
+}
+
+function updatePriceLabel(){
+  const label = document.getElementById('maxPriceLabel');
+  if(selectedMaxPriceCents === null){
+    label.textContent = '최대 가격: 전체';
+  } else {
+    const won = Math.round(selectedMaxPriceCents / 100).toLocaleString('ko-KR');
+    label.textContent = `최대 가격: ${won}원 이하`;
+  }
+}
+
+
 function priceOrInfinity(g){
   return (g.finalPriceCents === null || g.finalPriceCents === undefined) ? Infinity : g.finalPriceCents;
 }
@@ -412,6 +453,10 @@ function getFilteredSortedGames(){
       if(onlyFreeGenreMatched && g.finalPriceCents !== 0) return false;
     }
     if(specialsOnly && g.discountPct <= 0) return false;
+    if(selectedMaxPriceCents !== null){
+      if(g.finalPriceCents === null || g.finalPriceCents === undefined) return false;
+      if(g.finalPriceCents > selectedMaxPriceCents) return false;
+    }
     if(q && !g.title.toLowerCase().includes(q)) return false;
     return true;
   });
