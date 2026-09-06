@@ -261,7 +261,7 @@
 <div class="wrap">
 
   <div class="panel">
-    <p class="section-label">협동 유형 (하나 이상 선택)</p>
+    <p class="section-label">협동 유형 (하나 이상 선택, 선택 안 하면 전체)</p>
     <div class="chip-row" id="coopChips"></div>
 
     <p class="section-label">장르 (여러 개 선택 가능, 선택 안 하면 전체)</p>
@@ -271,7 +271,7 @@
       <div class="field">
         <label class="section-label" style="margin:0">정렬</label>
         <select id="sortSelect">
-          <option value="">관련순</option>
+          <option value="">관련순(리뷰 많은순)</option>
           <option value="Reviews_DESC">리뷰 많은순</option>
           <option value="Price_ASC">낮은 가격순</option>
           <option value="Price_DESC">높은 가격순</option>
@@ -295,7 +295,7 @@
   </div>
 
   <div id="resultsArea">
-    <div class="empty">협동 유형과 장르를 고른 다음 검색을 눌러줘.</div>
+    <div class="loading">게임 데이터 불러오는 중...</div>
   </div>
 
   <div class="loadmore-wrap" id="loadMoreWrap" style="display:none">
@@ -303,68 +303,61 @@
   </div>
 
   <footer class="note">
-    스팀 스토어 데이터를 실시간으로 불러와요. 협동 인원수(2인/4인 등)는 스팀이 구조화된 데이터로 제공하지 않아서, 정확한 인원수는 각 게임 페이지에서 확인해야 해요. 가격은 원화 기준이며, 브라우저에만 결과가 캐시돼요(최대 4시간).
+    게임 데이터는 하루 두 번 자동으로 갱신돼요(실시간 아님). 협동 인원수(2인/4인 등)는 스팀이 구조화된 데이터로 제공하지 않아서, 정확한 인원수는 각 게임 페이지에서 확인해야 해요. 가격은 원화 기준입니다.
   </footer>
 
 </div>
 
 <script>
-// ---------- 데이터 정의 ----------
-const COOP_CATEGORIES = [
-  { id: 9,  label: '협동 전체' },
-  { id: 38, label: '온라인 협동' },
-  { id: 39, label: '스플릿 스크린 협동' },
-  { id: 48, label: 'LAN 협동' },
-  { id: 44, label: '리모트 플레이 투게더' },
-];
-
-// 장르 태그 id는 카테고리 id와 별개 네임스페이스라 겹치는 숫자(예: 9)가 있어도 문제없음 — tags= 파라미터에만 사용
-const GENRE_TAGS = [
-  { id: 19,  label: '액션' },
-  { id: 21,  label: '어드벤처' },
-  { id: 122, label: 'RPG' },
-  { id: 9,   label: '전략' },
-  { id: 599, label: '시뮬레이션' },
-  { id: 597, label: '캐주얼' },
-  { id: 492, label: '인디' },
-  { id: 699, label: '레이싱' },
-  { id: 701, label: '스포츠' },
-  { id: 1664,label: '퍼즐' },
-  { id: 1663,label: 'FPS' },
-  { id: 1625,label: '플랫포머' },
-  { id: 1695,label: '오픈월드' },
-];
-
-// ---------- CORS 프록시 (경쟁 방식, 가입/키 불필요) ----------
-// corsproxy.io는 계속 401만 내서 제거함
-const CORS_PROXIES = [
-  { name: 'blkproxy', build: url => `https://blkproxy.iambhvsh.in/api/proxy?url=${encodeURIComponent(url)}`, timeout: 12000 },
-  { name: 'cors.lol', build: url => `https://api.cors.lol/url=${url}`, timeout: 12000 },
-  { name: 'codetabs', build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, timeout: 15000 },
-  { name: 'allorigins-raw', build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, timeout: 12000 },
-  { name: 'allorigins-get', build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, timeout: 12000, wrapped: true },
-  { name: 'deno-proxy', build: url => `https://9sako6-cors-proxy-server.deno.dev?quest=${encodeURIComponent(url)}`, timeout: 10000 },
-  { name: 'thingproxy', build: url => `https://thingproxy.freeboard.io/fetch/${url}`, timeout: 10000 },
-];
-
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4시간
-const PAGE_SIZE = 25; // 스팀이 만들어야 할 HTML 양을 줄여서 응답 속도 개선 (기존 50)
-
 // ---------- 상태 ----------
-let selectedCoop = new Set([9]); // 기본: 협동 전체
+let allGames = [];
+let dataGeneratedAt = null;
+let selectedCoop = new Set();
 let selectedGenres = new Set();
-let currentStart = 0;
-let currentCacheKey = '';
-let currentTotal = 0;
+let filteredCache = [];
+let shownCount = 0;
+const PAGE_SIZE = 24;
 
-// ---------- UI 초기화 ----------
-function renderChips(container, items, selectedSet, singleOrMulti){
+// ---------- 데이터 로드 (같은 사이트 안의 정적 JSON — CORS 프록시 불필요) ----------
+async function loadData(){
+  document.getElementById('resultsArea').innerHTML = '<div class="loading">게임 데이터 불러오는 중...</div>';
+  try{
+    const res = await fetch('./data/coop-games.json', { cache: 'no-store' });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    allGames = data.games || [];
+    dataGeneratedAt = data.generatedAt ? new Date(data.generatedAt) : null;
+
+    renderChips('coopChips', data.coopCategories || [], selectedCoop);
+    renderChips('genreChips', data.genres || [], selectedGenres);
+
+    document.getElementById('resultsArea').innerHTML = '<div class="empty">협동 유형과 장르를 고른 다음 검색을 눌러줘.</div>';
+    setStatus(`데이터 갱신: ${formatAge(dataGeneratedAt)} · 총 ${allGames.length.toLocaleString()}개 수집됨`);
+  } catch(e){
+    document.getElementById('resultsArea').innerHTML =
+      `<div class="empty">게임 데이터를 불러올 수 없어.<br><span style="font-size:0.78rem;color:var(--sub)">${e.message} — data/coop-games.json 파일이 아직 없을 수 있어(첫 GitHub Actions 실행 전).</span></div>`;
+    setStatus('데이터 로드 실패', 'err');
+  }
+}
+
+function formatAge(date){
+  if(!date) return '알 수 없음';
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs/60000);
+  if(diffMin < 60) return `${diffMin}분 전`;
+  const diffH = Math.floor(diffMin/60);
+  if(diffH < 24) return `${diffH}시간 전`;
+  return `${Math.floor(diffH/24)}일 전`;
+}
+
+// ---------- 칩 렌더링 ----------
+function renderChips(container, items, selectedSet){
   const el = document.getElementById(container);
   el.innerHTML = '';
   items.forEach(item => {
     const chip = document.createElement('div');
     chip.className = 'chip' + (selectedSet.has(item.id) ? ' active' : '');
-    chip.textContent = item.label;
+    chip.textContent = item.description;
     chip.onclick = () => {
       if(selectedSet.has(item.id)){
         selectedSet.delete(item.id);
@@ -376,136 +369,84 @@ function renderChips(container, items, selectedSet, singleOrMulti){
     el.appendChild(chip);
   });
 }
-renderChips('coopChips', COOP_CATEGORIES, selectedCoop);
-renderChips('genreChips', GENRE_TAGS, selectedGenres);
 
-// ---------- 쿼리 빌드 ----------
-function buildSteamUrl(start){
-  const params = new URLSearchParams();
-  params.set('query', document.getElementById('queryText').value.trim());
-  params.set('start', start);
-  params.set('count', PAGE_SIZE);
-  params.set('category1', '998'); // 게임만
-  params.set('infinite', '1');
-  params.set('cc', 'kr');
-  params.set('l', 'koreana');
-  if(selectedCoop.size) params.set('category2', [...selectedCoop].join(','));
-  if(selectedGenres.size) params.set('tags', [...selectedGenres].join(','));
-  if(document.getElementById('specialsOnly').checked) params.set('specials', '1');
-  const sortVal = document.getElementById('sortSelect').value;
-  if(sortVal) params.set('sort_by', sortVal);
-  return `https://store.steampowered.com/search/results/?${params.toString()}`;
+// ---------- 필터링/정렬 (전부 클라이언트에서, 네트워크 요청 없음) ----------
+function priceOrInfinity(g){
+  return (g.finalPriceCents === null || g.finalPriceCents === undefined) ? Infinity : g.finalPriceCents;
+}
+function releaseSortValue(g){
+  const m = (g.released || '').match(/(\d{4})년(?:\s*(\d{1,2})월)?(?:\s*(\d{1,2})일)?/);
+  if(!m) return -Infinity;
+  const y = parseInt(m[1],10);
+  const mo = m[2] ? parseInt(m[2],10) : 1;
+  const d = m[3] ? parseInt(m[3],10) : 1;
+  return y*10000 + mo*100 + d;
+}
+function compareGames(a, b, sortKey){
+  switch(sortKey){
+    case 'Reviews_DESC': return (b.reviewCount||0) - (a.reviewCount||0);
+    case 'Price_ASC': return priceOrInfinity(a) - priceOrInfinity(b);
+    case 'Price_DESC': return priceOrInfinity(b) - priceOrInfinity(a);
+    case 'Released_DESC': return releaseSortValue(b) - releaseSortValue(a);
+    case 'Name_ASC': return a.title.localeCompare(b.title, 'ko');
+    default: return 0; // 관련순: 원본 순서(수집 시 리뷰 많은순으로 가져옴) 유지
+  }
 }
 
-function filtersKey(){
-  return JSON.stringify({
-    q: document.getElementById('queryText').value.trim(),
-    coop: [...selectedCoop].sort(),
-    genre: [...selectedGenres].sort(),
-    specials: document.getElementById('specialsOnly').checked,
-    sort: document.getElementById('sortSelect').value,
+function getFilteredSortedGames(){
+  const q = document.getElementById('queryText').value.trim().toLowerCase();
+  const specialsOnly = document.getElementById('specialsOnly').checked;
+  const sortKey = document.getElementById('sortSelect').value;
+
+  let list = allGames.filter(g => {
+    if(selectedCoop.size > 0){
+      const hasCoop = (g.categories||[]).some(c => selectedCoop.has(c.id));
+      if(!hasCoop) return false;
+    }
+    if(selectedGenres.size > 0){
+      const hasGenre = (g.genres||[]).some(gg => selectedGenres.has(gg.id));
+      if(!hasGenre) return false;
+    }
+    if(specialsOnly && g.discountPct <= 0) return false;
+    if(q && !g.title.toLowerCase().includes(q)) return false;
+    return true;
   });
+
+  if(sortKey) list = [...list].sort((a,b) => compareGames(a,b,sortKey));
+  return list;
 }
 
-// ---------- 프록시 순차 시도 (동시에 5개 다 쏘지 않음 — 하나 성공하면 나머지는 요청 안 나감) ----------
-let lastProxyErrors = [];
+// ---------- 검색 실행 (네트워크 없이 메모리 안에서 처리) ----------
+function runSearch(){
+  filteredCache = getFilteredSortedGames();
+  shownCount = 0;
+  document.getElementById('resultsArea').innerHTML = '<div class="grid" id="gameGrid"></div>';
+  renderNextPage(false);
+}
 
-async function raceFetch(targetUrl){
-  lastProxyErrors = [];
-  for(const p of CORS_PROXIES){
-    try{
-      const res = await fetch(p.build(targetUrl), { signal: AbortSignal.timeout(p.timeout || 12000) });
-      if(!res.ok){
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const text = await res.text();
-      let payload = text;
-      // allorigins-get 처럼 {"contents": "..."} 형태로 감싸서 오는 경우 언랩
-      if(p.wrapped){
-        try{
-          const wrapper = JSON.parse(text);
-          payload = wrapper.contents;
-        }catch(e){
-          throw new Error('wrapped 응답 파싱 실패');
-        }
-      }
-      // 프록시가 200을 줘도 에러 페이지(HTML)를 반환하는 경우가 있어 최소 검증
-      if(!payload || !payload.trim().startsWith('{')){
-        throw new Error('응답이 JSON이 아님(프록시가 에러 페이지를 반환했을 가능성)');
-      }
-      return payload;
-    } catch(e){
-      lastProxyErrors.push(`${p.name}: ${e.message || e}`);
-      // 다음 프록시로 넘어감
-    }
+function renderNextPage(append){
+  const nextItems = filteredCache.slice(shownCount, shownCount + PAGE_SIZE);
+  shownCount += nextItems.length;
+
+  if(filteredCache.length === 0){
+    document.getElementById('resultsArea').innerHTML = '<div class="empty">조건에 맞는 게임을 찾지 못했어. 필터를 조금 완화해봐.</div>';
+    toggleLoadMore(false);
+    setStatus(`데이터 갱신: ${formatAge(dataGeneratedAt)} · 총 0개`);
+    return;
   }
-  throw new Error('모든 프록시 실패');
-}
 
-// 전부 실패하면 1.5초 쉬었다가 한 번 더 시도 (일시적인 지연/혼잡이었을 경우 구제)
-async function raceFetchWithRetry(targetUrl, retriesLeft = 1){
-  try{
-    return await raceFetch(targetUrl);
-  } catch(e){
-    if(retriesLeft > 0){
-      await new Promise(r => setTimeout(r, 1500));
-      return raceFetchWithRetry(targetUrl, retriesLeft - 1);
-    }
-    throw e;
-  }
-}
-
-// ---------- 결과 파싱 ----------
-function parseResults(jsonText){
-  let data;
-  try { data = JSON.parse(jsonText); }
-  catch(e){ throw new Error('파싱 실패'); }
-  if(!data || data.success !== 1) throw new Error('스팀 응답 오류');
-
-  const doc = new DOMParser().parseFromString(data.results_html, 'text/html');
-  const rows = [...doc.querySelectorAll('a.search_result_row')];
-  const items = rows.map(row => {
-    const appid = row.dataset.dsAppid || (row.href.match(/\/app\/(\d+)/) || [])[1] || '';
-    const title = row.querySelector('.title')?.textContent?.trim() || '이름 없음';
-    const released = row.querySelector('.search_released')?.textContent?.trim() || '';
-    const img = row.querySelector('img')?.src || '';
-
-    const priceBlock = row.querySelector('.search_price_discount_combined');
-    let finalPriceCents = priceBlock?.dataset.priceFinal;
-    finalPriceCents = finalPriceCents !== undefined ? parseInt(finalPriceCents, 10) : null;
-
-    const discountEl = row.querySelector('.search_discount span');
-    const discountPct = discountEl?.textContent?.replace(/[^\d]/g,'') || '0';
-
-    const priceTextBlock = row.querySelector('.search_price');
-    let origPriceText = '';
-    if(priceTextBlock){
-      const strike = priceTextBlock.querySelector('strike, [style*="line-through"]');
-      origPriceText = strike?.textContent?.trim() || '';
-    }
-
-    const reviewEl = row.querySelector('.search_reviewscore span[data-tooltip-html]');
-    const tooltipRaw = reviewEl?.getAttribute('data-tooltip-html') || '';
-    const reviewSummary = tooltipRaw.split('<br>')[0]?.trim() || '';
-
-    return {
-      appid, title, released, img,
-      finalPriceCents, discountPct: parseInt(discountPct,10) || 0,
-      origPriceText, reviewSummary,
-      url: `https://store.steampowered.com/app/${appid}/`,
-    };
-  }).filter(it => it.appid);
-
-  return { items, total: data.total_count || items.length };
-}
-
-function formatKrw(cents){
-  if(cents === null || cents === undefined) return '가격 정보 없음';
-  if(cents === 0) return '무료';
-  return Math.round(cents/100).toLocaleString('ko-KR') + '원'; // cc=kr이면 이미 원 단위 정수로 옴 (센트 아님)
+  renderCards(nextItems, append);
+  toggleLoadMore(shownCount < filteredCache.length);
+  setStatus(`데이터 갱신: ${formatAge(dataGeneratedAt)} · 조건에 맞는 게임 ${filteredCache.length.toLocaleString()}개`);
 }
 
 // ---------- 렌더링 ----------
+function formatKrw(cents){
+  if(cents === null || cents === undefined) return '가격 정보 없음';
+  if(cents === 0) return '무료';
+  return Math.round(cents/100).toLocaleString('ko-KR') + '원';
+}
+
 function renderCards(items, append){
   const area = document.getElementById('resultsArea');
   let grid = document.getElementById('gameGrid');
@@ -513,11 +454,6 @@ function renderCards(items, append){
     area.innerHTML = '<div class="grid" id="gameGrid"></div>';
     grid = document.getElementById('gameGrid');
   }
-  if(items.length === 0 && !append){
-    area.innerHTML = '<div class="empty">조건에 맞는 게임을 찾지 못했어. 필터를 조금 완화해봐.</div>';
-    return;
-  }
-  const badgeLabels = [...selectedCoop].map(id => COOP_CATEGORIES.find(c=>c.id===id)?.label).filter(Boolean);
 
   items.forEach(it => {
     const card = document.createElement('a');
@@ -531,6 +467,8 @@ function renderCards(items, append){
       : `${it.discountPct > 0 ? `<span class="discount-badge">-${it.discountPct}%</span>` : ''}
          ${it.origPriceText ? `<span class="price-orig">${it.origPriceText}</span>` : ''}
          <span class="price-final">${formatKrw(it.finalPriceCents)}</span>`;
+
+    const badgeLabels = (it.categories || []).map(c => c.description);
 
     card.innerHTML = `
       <img src="${it.img}" loading="lazy" alt="${it.title}">
@@ -550,86 +488,15 @@ function setStatus(msg, type){
   el.innerHTML = `<span class="${type||''}">${msg}</span>`;
 }
 
-// ---------- 캐시 ----------
-function readCache(key){
-  try{
-    const raw = localStorage.getItem('coopfinder:'+key);
-    if(!raw) return null;
-    return JSON.parse(raw);
-  }catch(e){ return null; }
-}
-function writeCache(key, payload){
-  try{
-    localStorage.setItem('coopfinder:'+key, JSON.stringify(payload));
-  }catch(e){ /* 용량 초과 등은 무시 */ }
-}
-
-// ---------- 검색 실행 ----------
-async function runSearch(start, append){
-  const key = filtersKey();
-  currentCacheKey = key;
-  currentStart = start;
-
-  const cache = readCache(key);
-  const isFresh = cache && (Date.now() - cache.timestamp < CACHE_TTL_MS);
-
-  if(!append && isFresh){
-    renderCards(cache.items, false);
-    currentTotal = cache.total;
-    toggleLoadMore(cache.items.length < cache.total);
-    const ageMin = Math.round((Date.now()-cache.timestamp)/60000);
-    setStatus(`캐시된 결과 (${ageMin}분 전 갱신) · 총 ${cache.total.toLocaleString()}개`, 'cached');
-    return;
-  }
-
-  if(!append) document.getElementById('resultsArea').innerHTML = '<div class="loading">불러오는 중...</div>';
-  setStatus('스팀에서 데이터 불러오는 중...');
-
-  try{
-    const url = buildSteamUrl(start);
-    const text = await raceFetchWithRetry(url);
-    const { items, total } = parseResults(text);
-    currentTotal = total;
-
-    renderCards(items, append);
-    toggleLoadMore((append ? (grid_count()+items.length) : items.length) < total);
-
-    if(!append){
-      writeCache(key, { timestamp: Date.now(), items, total });
-    } else {
-      const prevCache = readCache(key);
-      if(prevCache){
-        writeCache(key, { timestamp: prevCache.timestamp, items: prevCache.items.concat(items), total });
-      }
-    }
-    setStatus(`실시간 갱신 완료 · 총 ${total.toLocaleString()}개`);
-  } catch(e){
-    const detail = lastProxyErrors.length
-      ? lastProxyErrors.join(' / ')
-      : (e.message || String(e));
-    if(cache){
-      if(!append) renderCards(cache.items, false);
-      toggleLoadMore(false);
-      const ageMin = Math.round((Date.now()-cache.timestamp)/60000);
-      setStatus(`실시간 갱신 실패 (${detail}) — ${ageMin}분 전 캐시 표시 중`, 'err');
-    } else {
-      document.getElementById('resultsArea').innerHTML = `<div class="empty">지금은 스팀 데이터를 불러올 수 없어.<br><span style="font-size:0.78rem;color:var(--sub)">${detail}</span></div>`;
-      setStatus(`실시간 갱신 실패: ${detail}`, 'err');
-      toggleLoadMore(false);
-    }
-  }
-}
-
-function grid_count(){
-  return document.querySelectorAll('#gameGrid .card').length;
-}
-
 function toggleLoadMore(show){
   document.getElementById('loadMoreWrap').style.display = show ? 'block' : 'none';
 }
 
-document.getElementById('searchBtn').onclick = () => runSearch(0, false);
-document.getElementById('loadMoreBtn').onclick = () => runSearch(currentStart + PAGE_SIZE, true);
+// ---------- 이벤트 바인딩 ----------
+document.getElementById('searchBtn').onclick = () => runSearch();
+document.getElementById('loadMoreBtn').onclick = () => renderNextPage(true);
+
+loadData();
 </script>
 
 </body>
