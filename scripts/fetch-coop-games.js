@@ -97,6 +97,25 @@ function parseSearchHtml(html) {
   return items;
 }
 
+// 게임 설명 텍스트에서 "2-4인", "최대 4인", "4인용" 같은 패턴으로 협동 인원수를 추정한다.
+// 스팀이 구조화된 인원수 데이터를 안 줘서 텍스트 정규식으로 짐작하는 것이라 완벽하지 않다.
+function parsePlayerCount(text) {
+  if (!text) return null;
+  // "2-4인", "2~4명", "2-4 players"
+  let m = text.match(/(\d{1,2})\s*[-~]\s*(\d{1,2})\s*(?:인|명|players?)/i);
+  if (m) return { min: parseInt(m[1], 10), max: parseInt(m[2], 10) };
+  // "최대 4인", "up to 4 players"
+  m = text.match(/(?:최대|up to)\s*(\d{1,2})\s*(?:인|명|players?)/i);
+  if (m) return { min: 2, max: parseInt(m[1], 10) };
+  // "4인용", "4-player co-op", "4 players"
+  m = text.match(/(\d{1,2})\s*(?:인용|명|players?)\b/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 2 && n <= 20) return { min: n, max: n };
+  }
+  return null;
+}
+
 async function fetchAppDetails(appid) {
   const url = `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=kr&l=koreana`;
   try {
@@ -105,9 +124,13 @@ async function fetchAppDetails(appid) {
     const data = await res.json();
     const entry = data[appid];
     if (!entry || !entry.success || !entry.data) return null;
+    const shortDesc = entry.data.short_description || '';
+    const playerCount = parsePlayerCount(shortDesc);
     return {
       categories: (entry.data.categories || []).map((c) => ({ id: c.id, description: c.description })),
       genres: (entry.data.genres || []).map((g) => ({ id: g.id, description: g.description })),
+      coopMin: playerCount ? playerCount.min : null,
+      coopMax: playerCount ? playerCount.max : null,
     };
   } catch (e) {
     return null;
@@ -143,6 +166,8 @@ async function main() {
     if (details) {
       item.categories = details.categories;
       item.genres = details.genres;
+      item.coopMin = details.coopMin;
+      item.coopMax = details.coopMax;
 
       details.categories.forEach((c) => {
         if (/협동|co-?op/i.test(c.description)) {
@@ -159,6 +184,8 @@ async function main() {
     } else {
       item.categories = [];
       item.genres = [];
+      item.coopMin = null;
+      item.coopMax = null;
     }
     if (i % 25 === 0) console.log(`  appdetails 진행: ${i}/${allItems.length}`);
     await sleep(APPDETAILS_DELAY_MS);
@@ -184,7 +211,7 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'coop-games.json'), JSON.stringify(output));
   console.log(
-    `완료: 게임 ${allItems.length}개, coop 카테고리 ${coopCategories.length}개, 장르 ${genres.length}개, 할인 중인 게임 ${allItems.filter(g=>g.discountPct>0).length}개`
+    `완료: 게임 ${allItems.length}개, coop 카테고리 ${coopCategories.length}개, 장르 ${genres.length}개, 할인 중인 게임 ${allItems.filter(g=>g.discountPct>0).length}개, 인원수 파악된 게임 ${allItems.filter(g=>g.coopMax).length}개`
   );
 }
 
