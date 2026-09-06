@@ -54,12 +54,26 @@ function parseSearchHtml(html) {
     let finalPriceCents = priceBlock.attr('data-price-final');
     finalPriceCents = finalPriceCents !== undefined ? parseInt(finalPriceCents, 10) : null;
 
-    const discountText = row.find('.search_discount span').text().replace(/[^\d]/g, '');
-    const discountPct = parseInt(discountText, 10) || 0;
+    // 할인율 추출: 클래스명이 스팀 쪽에서 바뀌는 경우가 있어 span 텍스트를 먼저 시도하고,
+    // 실패하면 행 전체 텍스트에서 "-20%" 같은 패턴을 정규식으로 직접 찾는다 (더 안전함).
+    let discountPct = 0;
+    const discountSpanText = row.find('.search_discount span').text();
+    const discountMatch1 = discountSpanText.match(/(\d{1,2})\s*%/);
+    if (discountMatch1) discountPct = parseInt(discountMatch1[1], 10);
+    if (!discountPct) {
+      const rowText = row.text();
+      const discountMatch2 = rowText.match(/-\s*(\d{1,2})\s*%/);
+      if (discountMatch2) discountPct = parseInt(discountMatch2[1], 10);
+    }
 
     let origPriceText = '';
     const strike = row.find('.search_price strike');
     if (strike.length) origPriceText = strike.text().trim();
+    if (!origPriceText && discountPct > 0 && finalPriceCents) {
+      // strike 텍스트를 못 찾으면 할인율 기준으로 원가를 역산해서 표시용 텍스트를 만든다.
+      const estimatedOriginal = Math.round(finalPriceCents / (1 - discountPct / 100));
+      origPriceText = Math.round(estimatedOriginal / 100).toLocaleString('ko-KR') + '원';
+    }
 
     const reviewEl = row.find('.search_reviewscore span[data-tooltip-html]');
     const tooltipRaw = reviewEl.attr('data-tooltip-html') || '';
@@ -170,7 +184,7 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'coop-games.json'), JSON.stringify(output));
   console.log(
-    `완료: 게임 ${allItems.length}개, coop 카테고리 ${coopCategories.length}개, 장르 ${genres.length}개`
+    `완료: 게임 ${allItems.length}개, coop 카테고리 ${coopCategories.length}개, 장르 ${genres.length}개, 할인 중인 게임 ${allItems.filter(g=>g.discountPct>0).length}개`
   );
 }
 
