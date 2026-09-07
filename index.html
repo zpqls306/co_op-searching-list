@@ -303,7 +303,7 @@
   </div>
 </header>
 
-<video id="hoverPreview" muted loop playsinline style="position:fixed; display:none; object-fit:cover; z-index:1000; pointer-events:none; border-radius:6px 6px 0 0; background:#000;"></video>
+<video id="hoverPreview" loop playsinline style="position:fixed; display:none; object-fit:cover; z-index:1000; pointer-events:none; border-radius:6px 6px 0 0; background:#000;"></video>
 
 <div class="wrap">
 
@@ -366,6 +366,11 @@
 <script>
 // ---------- 상태 ----------
 const CHANGELOG = [
+  {
+    version: 'v1.6',
+    date: '2026-09-07',
+    notes: ['예고편 미리보기에 소리 나오게 변경 (자동재생 정책에 막히면 음소거로 자동 대체)'],
+  },
   {
     version: 'v1.5',
     date: '2026-09-07',
@@ -523,6 +528,18 @@ let previewHoverTimer = null;
 let hlsInstance = null;
 const supportsNativeHls = previewVideo.canPlayType('application/vnd.apple.mpegurl') !== '';
 
+function playWithSoundFallback(){
+  previewVideo.muted = false;
+  const p = previewVideo.play();
+  if(p && p.catch){
+    p.catch(() => {
+      // 소리 재생이 브라우저 정책에 막히면 음소거로라도 재생
+      previewVideo.muted = true;
+      previewVideo.play().catch(() => {});
+    });
+  }
+}
+
 function showPreview(imgEl, trailerUrl){
   const rect = imgEl.getBoundingClientRect();
   previewVideo.style.left = rect.left + 'px';
@@ -532,7 +549,7 @@ function showPreview(imgEl, trailerUrl){
 
   if(previewVideo.getAttribute('data-src') === trailerUrl){
     previewVideo.style.display = 'block';
-    previewVideo.play().catch(() => {});
+    playWithSoundFallback();
     return;
   }
   previewVideo.setAttribute('data-src', trailerUrl);
@@ -541,7 +558,7 @@ function showPreview(imgEl, trailerUrl){
     // Safari 등: <video>가 HLS를 네이티브로 재생 가능
     previewVideo.src = trailerUrl;
     previewVideo.style.display = 'block';
-    previewVideo.play().catch(() => {});
+    playWithSoundFallback();
   } else if(window.Hls && window.Hls.isSupported()){
     // Chrome/Firefox 등: hls.js로 재생
     if(hlsInstance){
@@ -552,7 +569,7 @@ function showPreview(imgEl, trailerUrl){
     hlsInstance.attachMedia(previewVideo);
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
       previewVideo.style.display = 'block';
-      previewVideo.play().catch(() => {});
+      playWithSoundFallback();
     });
   }
 }
