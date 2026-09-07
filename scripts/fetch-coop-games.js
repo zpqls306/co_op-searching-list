@@ -150,11 +150,14 @@ async function fetchAppDetails(appid) {
     if (!entry || !entry.success || !entry.data) return null;
     const shortDesc = entry.data.short_description || '';
     const playerCount = parsePlayerCount(shortDesc);
+    const movie = (entry.data.movies || [])[0];
+    const trailerUrl = movie ? (movie.webm?.max || movie.mp4?.max || movie.webm?.[480] || movie.mp4?.[480] || null) : null;
     return {
       categories: (entry.data.categories || []).map((c) => ({ id: c.id, description: c.description })),
       genres: (entry.data.genres || []).map((g) => ({ id: g.id, description: g.description })),
       coopMin: playerCount ? playerCount.min : null,
       coopMax: playerCount ? playerCount.max : null,
+      trailerUrl,
     };
   } catch (e) {
     return null;
@@ -193,6 +196,7 @@ async function main() {
       item.genres = details.genres;
       item.coopMin = details.coopMin;
       item.coopMax = details.coopMax;
+      item.trailerUrl = details.trailerUrl;
 
       details.categories.forEach((c) => {
         if (/협동|co-?op/i.test(c.description)) {
@@ -211,6 +215,7 @@ async function main() {
       item.genres = [];
       item.coopMin = null;
       item.coopMax = null;
+      item.trailerUrl = null;
     }
 
     // data-ds-tagids 로 확보한 태그 id 중 EXTRA_TAG_MAP에 있는 것만 genres에 합침
@@ -256,7 +261,7 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'coop-games.json'), JSON.stringify(output));
   console.log(
-    `완료: 게임 ${allItems.length}개, coop 카테고리 ${coopCategories.length}개, 장르 ${genres.length}개, 할인 중인 게임 ${allItems.filter(g=>g.discountPct>0).length}개, 인원수 파악된 게임 ${allItems.filter(g=>g.coopMax).length}개`
+    `완료: 게임 ${allItems.length}개, coop 카테고리 ${coopCategories.length}개, 장르 ${genres.length}개, 할인 중인 게임 ${allItems.filter(g=>g.discountPct>0).length}개, 인원수 파악된 게임 ${allItems.filter(g=>g.coopMax).length}개, 예고편 있는 게임 ${allItems.filter(g=>g.trailerUrl).length}개`
   );
 }
 
