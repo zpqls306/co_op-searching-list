@@ -362,9 +362,15 @@
 
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 <script>
 // ---------- 상태 ----------
 const CHANGELOG = [
+  {
+    version: 'v1.5',
+    date: '2026-09-07',
+    notes: ['예고편 재생 안 되는 문제 수정 (스팀이 webm/mp4→HLS 스트리밍 방식으로 변경한 걸 반영, hls.js 라이브러리 추가)'],
+  },
   {
     version: 'v1.4',
     date: '2026-09-06',
@@ -511,8 +517,11 @@ function renderChangelog(){
 renderChangelog();
 
 // ---------- 마우스오버 영상 미리보기 (재생기 하나만 두고 위치만 옮기는 방식) ----------
+// 스팀 예고편이 HLS 스트리밍(.m3u8)이라 Safari 이외 브라우저는 hls.js로 재생함
 const previewVideo = document.getElementById('hoverPreview');
 let previewHoverTimer = null;
+let hlsInstance = null;
+const supportsNativeHls = previewVideo.canPlayType('application/vnd.apple.mpegurl') !== '';
 
 function showPreview(imgEl, trailerUrl){
   const rect = imgEl.getBoundingClientRect();
@@ -520,12 +529,32 @@ function showPreview(imgEl, trailerUrl){
   previewVideo.style.top = rect.top + 'px';
   previewVideo.style.width = rect.width + 'px';
   previewVideo.style.height = rect.height + 'px';
-  if(previewVideo.getAttribute('data-src') !== trailerUrl){
-    previewVideo.src = trailerUrl;
-    previewVideo.setAttribute('data-src', trailerUrl);
+
+  if(previewVideo.getAttribute('data-src') === trailerUrl){
+    previewVideo.style.display = 'block';
+    previewVideo.play().catch(() => {});
+    return;
   }
-  previewVideo.style.display = 'block';
-  previewVideo.play().catch(() => {});
+  previewVideo.setAttribute('data-src', trailerUrl);
+
+  if(supportsNativeHls){
+    // Safari 등: <video>가 HLS를 네이티브로 재생 가능
+    previewVideo.src = trailerUrl;
+    previewVideo.style.display = 'block';
+    previewVideo.play().catch(() => {});
+  } else if(window.Hls && window.Hls.isSupported()){
+    // Chrome/Firefox 등: hls.js로 재생
+    if(hlsInstance){
+      hlsInstance.destroy();
+    }
+    hlsInstance = new Hls();
+    hlsInstance.loadSource(trailerUrl);
+    hlsInstance.attachMedia(previewVideo);
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+      previewVideo.style.display = 'block';
+      previewVideo.play().catch(() => {});
+    });
+  }
 }
 
 function hidePreview(){
@@ -533,6 +562,10 @@ function hidePreview(){
   previewVideo.style.display = 'none';
   previewVideo.removeAttribute('src');
   previewVideo.removeAttribute('data-src');
+  if(hlsInstance){
+    hlsInstance.destroy();
+    hlsInstance = null;
+  }
   previewVideo.load();
 }
 
