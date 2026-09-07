@@ -243,6 +243,14 @@
     color:var(--accent);
     border:1px solid var(--accent-dim);
   }
+  .tag-badge-players{
+    font-size:0.7rem;
+    padding:2px 7px;
+    border-radius:3px;
+    background:rgba(167,139,250,0.12);
+    color:#a78bfa;
+    border:1px solid #6d5bb0;
+  }
   .price-row{
     margin-top:auto;
     display:flex;
@@ -688,6 +696,16 @@ function formatKrw(cents){
   return Math.round(cents/100).toLocaleString('ko-KR') + '원';
 }
 
+// 협동 인원수 배지 라벨 생성. 스팀이 구조화된 인원수 데이터를 안 줘서
+// 게임 설명 텍스트를 정규식으로 추정한 값이라, 항상 "추정" 표기를 붙인다.
+function formatPlayerBadge(it){
+  if(!it.coopMax) return null;
+  if(it.coopMin && it.coopMin !== it.coopMax){
+    return `${it.coopMin}~${it.coopMax}인 추정`;
+  }
+  return `${it.coopMax}인 추정`;
+}
+
 function renderCards(items, append){
   const area = document.getElementById('resultsArea');
   let grid = document.getElementById('gameGrid');
@@ -709,6 +727,9 @@ function renderCards(items, append){
          ${it.origPriceText ? `<span class="price-orig">${it.origPriceText}</span>` : ''}
          <span class="price-final">${formatKrw(it.finalPriceCents)}</span>`;
 
+    const playerBadgeLabel = formatPlayerBadge(it);
+    const playerBadgeHtml = playerBadgeLabel ? `<span class="tag-badge-players">${playerBadgeLabel}</span>` : '';
+
     const badgeLabels = (it.categories || []).map(c => c.description);
 
     card.innerHTML = `
@@ -716,7 +737,7 @@ function renderCards(items, append){
       <div class="card-body">
         <div class="card-title">${it.title}</div>
         <div class="card-meta">${it.released || ''}${it.reviewSummary ? ' · ' + it.reviewSummary : ''}</div>
-        <div class="tag-row">${badgeLabels.map(l=>`<span class="tag-badge">${l}</span>`).join('')}</div>
+        <div class="tag-row">${playerBadgeHtml}${badgeLabels.map(l=>`<span class="tag-badge">${l}</span>`).join('')}</div>
         <div class="price-row">${priceHtml}</div>
       </div>
     `;
