@@ -140,8 +140,6 @@ function parsePlayerCount(text) {
   return null;
 }
 
-let debugMoviesLogCount = 0;
-
 async function fetchAppDetails(appid) {
   const url = `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=kr&l=koreana`;
   try {
@@ -152,14 +150,9 @@ async function fetchAppDetails(appid) {
     if (!entry || !entry.success || !entry.data) return null;
     const shortDesc = entry.data.short_description || '';
     const playerCount = parsePlayerCount(shortDesc);
+    // 스팀이 최근 webm/mp4 직접 링크 대신 HLS 스트리밍(hls_h264)으로 예고편을 제공함
     const movie = (entry.data.movies || [])[0];
-    const trailerUrl = movie ? (movie.webm?.max || movie.mp4?.max || movie.webm?.[480] || movie.mp4?.[480] || null) : null;
-
-    // 임시 디버그: 예고편이 계속 안 잡혀서 실제 응답 구조를 확인하기 위한 로그 (처음 3개만)
-    if (debugMoviesLogCount < 3) {
-      debugMoviesLogCount++;
-      console.log(`  [디버그] appid=${appid} movies 필드:`, JSON.stringify(entry.data.movies));
-    }
+    const trailerUrl = movie ? (movie.hls_h264 || null) : null;
 
     return {
       categories: (entry.data.categories || []).map((c) => ({ id: c.id, description: c.description })),
