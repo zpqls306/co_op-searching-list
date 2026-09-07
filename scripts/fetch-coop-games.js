@@ -13,6 +13,21 @@ const PAGE_SIZE = 100;             // 검색 결과 페이지당 개수
 const APPDETAILS_DELAY_MS = 1300;  // appdetails 호출 사이 지연 (레이트리밋 방지)
 const MAX_GENRES_OUTPUT = 20;      // 장르 칩으로 보여줄 최대 개수 (많이 쓰인 순)
 
+// 스팀 "공식 장르"에는 없지만 자주 찾는 커뮤니티 태그들을 수동으로 매핑.
+// data-ds-tagids 속성(검색 결과에 이미 포함되어 있음, 추가 요청 불필요)과 대조해서 사용한다.
+// 필요한 태그가 있으면 이 표에 id만 추가하면 됨 (id는 steamdb.info/tag/<id> 로 확인 가능).
+const EXTRA_TAG_MAP = {
+  1716: '로그라이크',
+  3959: '로그라이트',
+  42804: '액션 로그라이크',
+  1091588: '로그라이크 덱빌더',
+  1628: '메트로배니아',
+  32322: '덱빌딩',
+  1662: '생존',
+  7332: '기지 건설',
+  1677: '턴제',
+};
+
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 async function fetchSearchPage(start) {
@@ -45,6 +60,14 @@ function parseSearchHtml(html) {
       (row.attr('href') || '').match(/\/app\/(\d+)/)?.[1] ||
       '';
     if (!appid) return;
+
+    // 검색 결과 행에 이미 커뮤니티 태그 id 목록이 들어있음 (추가 요청 없이 활용 가능)
+    let tagIds = [];
+    try {
+      tagIds = JSON.parse(row.attr('data-ds-tagids') || '[]');
+    } catch (e) {
+      tagIds = [];
+    }
 
     const title = row.find('.title').text().trim() || '이름 없음';
     const released = row.find('.search_released').text().trim() || '';
@@ -92,6 +115,7 @@ function parseSearchHtml(html) {
       reviewSummary,
       reviewCount,
       url: `https://store.steampowered.com/app/${appid}/`,
+      _tagIds: tagIds, // 임시 필드, 최종 출력 전에 제거됨
     });
   });
   return items;
@@ -159,6 +183,7 @@ async function main() {
 
   const coopCategoryCounts = new Map(); // id -> { description, count }
   const genreCounts = new Map();
+  const extraTagCounts = new Map(); // 로그라이크 등 수동 매핑 태그 전용 카운트
 
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
@@ -187,6 +212,19 @@ async function main() {
       item.coopMin = null;
       item.coopMax = null;
     }
+
+    // data-ds-tagids 로 확보한 태그 id 중 EXTRA_TAG_MAP에 있는 것만 genres에 합침
+    (item._tagIds || []).forEach((tagId) => {
+      const label = EXTRA_TAG_MAP[tagId];
+      if (!label) return;
+      const prefixedId = `tag_${tagId}`;
+      item.genres.push({ id: prefixedId, description: label });
+      const cur = extraTagCounts.get(prefixedId) || { description: label, count: 0 };
+      cur.count += 1;
+      extraTagCounts.set(prefixedId, cur);
+    });
+    delete item._tagIds;
+
     if (i % 25 === 0) console.log(`  appdetails 진행: ${i}/${allItems.length}`);
     await sleep(APPDETAILS_DELAY_MS);
   }
@@ -195,10 +233,17 @@ async function main() {
     .map(([id, v]) => ({ id, description: v.description, count: v.count }))
     .sort((a, b) => b.count - a.count);
 
-  const genres = [...genreCounts.entries()]
+  const topOfficialGenres = [...genreCounts.entries()]
     .map(([id, v]) => ({ id, description: v.description, count: v.count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, MAX_GENRES_OUTPUT);
+
+  // 수동 매핑 태그(로그라이크 등)는 등장 빈도가 낮아도 항상 목록에 포함시킴
+  const extraTags = [...extraTagCounts.entries()]
+    .map(([id, v]) => ({ id, description: v.description, count: v.count }))
+    .sort((a, b) => b.count - a.count);
+
+  const genres = [...topOfficialGenres, ...extraTags];
 
   const output = {
     generatedAt: new Date().toISOString(),
