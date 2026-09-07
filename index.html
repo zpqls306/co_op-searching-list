@@ -48,6 +48,47 @@
     color:var(--sub);
     font-size:0.92rem;
   }
+  .changelog{
+    margin-top:12px;
+  }
+  .changelog-toggle{
+    background:var(--panel2);
+    border:1px solid var(--border);
+    color:var(--sub);
+    padding:4px 10px;
+    border-radius:4px;
+    font-size:0.76rem;
+    cursor:pointer;
+  }
+  .changelog-toggle:hover{border-color:var(--accent-dim);color:var(--text);}
+  .changelog-body{
+    margin-top:8px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:10px 14px;
+    max-width:480px;
+  }
+  .changelog-entry{
+    margin-bottom:8px;
+  }
+  .changelog-entry:last-child{margin-bottom:0;}
+  .changelog-entry .v{
+    font-weight:700;
+    color:var(--accent);
+    font-size:0.8rem;
+  }
+  .changelog-entry .d{
+    color:var(--sub);
+    font-size:0.72rem;
+    margin-left:6px;
+  }
+  .changelog-entry ul{
+    margin:4px 0 0;
+    padding-left:18px;
+    font-size:0.78rem;
+    color:var(--sub);
+  }
   .wrap{
     max-width:1180px;
     margin:0 auto;
@@ -256,7 +297,13 @@
 <header>
   <h1>코업 파인더<span class="dot">.</span></h1>
   <p>가격 · 장르 · 할인 · 협동 유형으로 필터링해서, 친구랑 할 게임을 빠르게 찾아요.</p>
+  <div class="changelog" id="changelogPanel">
+    <button class="changelog-toggle" id="changelogToggle" type="button"></button>
+    <div class="changelog-body" id="changelogBody" style="display:none"></div>
+  </div>
 </header>
+
+<video id="hoverPreview" muted loop playsinline style="position:fixed; display:none; object-fit:cover; z-index:1000; pointer-events:none; border-radius:6px 6px 0 0; background:#000;"></video>
 
 <div class="wrap">
 
@@ -317,6 +364,34 @@
 
 <script>
 // ---------- 상태 ----------
+const CHANGELOG = [
+  {
+    version: 'v1.4',
+    date: '2026-09-06',
+    notes: ['카드에 마우스 올리면 스팀 예고편 영상 미리보기', '상단에 업데이트 내역 패널 추가'],
+  },
+  {
+    version: 'v1.3',
+    date: '2026-09-06',
+    notes: ['협동 인원수 필터 추가(게임 설명 기반 추정)', '로그라이크/생존/메트로배니아 등 커뮤니티 태그 장르 추가'],
+  },
+  {
+    version: 'v1.2',
+    date: '2026-09-06',
+    notes: ['가격 필터를 드래그 슬라이더 → 클릭 버튼 방식으로 변경'],
+  },
+  {
+    version: 'v1.1',
+    date: '2026-09-06',
+    notes: ['CORS 프록시 방식 → GitHub Actions로 데이터 수집 방식 전환(프록시 불안정 문제 해결)', '할인율 파싱 버그 수정', '"무료 플레이" 장르 오분류 보정'],
+  },
+  {
+    version: 'v1.0',
+    date: '2026-09-06',
+    notes: ['최초 배포 (CORS 프록시로 스팀 실시간 검색)'],
+  },
+];
+
 let allGames = [];
 let dataGeneratedAt = null;
 let selectedCoop = new Set();
@@ -418,6 +493,61 @@ function getSelectedMaxPriceCents(){
   return tier ? tier.max : null;
 }
 
+// ---------- 업데이트 내역 패널 ----------
+function renderChangelog(){
+  const toggle = document.getElementById('changelogToggle');
+  const body = document.getElementById('changelogBody');
+  toggle.textContent = `업데이트 내역 (${CHANGELOG[0].version}) ▾`;
+  body.innerHTML = CHANGELOG.map(entry => `
+    <div class="changelog-entry">
+      <span class="v">${entry.version}</span><span class="d">${entry.date}</span>
+      <ul>${entry.notes.map(n => `<li>${n}</li>`).join('')}</ul>
+    </div>
+  `).join('');
+  toggle.onclick = () => {
+    body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  };
+}
+renderChangelog();
+
+// ---------- 마우스오버 영상 미리보기 (재생기 하나만 두고 위치만 옮기는 방식) ----------
+const previewVideo = document.getElementById('hoverPreview');
+let previewHoverTimer = null;
+
+function showPreview(imgEl, trailerUrl){
+  const rect = imgEl.getBoundingClientRect();
+  previewVideo.style.left = rect.left + 'px';
+  previewVideo.style.top = rect.top + 'px';
+  previewVideo.style.width = rect.width + 'px';
+  previewVideo.style.height = rect.height + 'px';
+  if(previewVideo.getAttribute('data-src') !== trailerUrl){
+    previewVideo.src = trailerUrl;
+    previewVideo.setAttribute('data-src', trailerUrl);
+  }
+  previewVideo.style.display = 'block';
+  previewVideo.play().catch(() => {});
+}
+
+function hidePreview(){
+  previewVideo.pause();
+  previewVideo.style.display = 'none';
+  previewVideo.removeAttribute('src');
+  previewVideo.removeAttribute('data-src');
+  previewVideo.load();
+}
+
+function attachHoverPreview(card, imgEl, trailerUrl){
+  if(!trailerUrl) return;
+  card.addEventListener('mouseenter', () => {
+    clearTimeout(previewHoverTimer);
+    previewHoverTimer = setTimeout(() => showPreview(imgEl, trailerUrl), 300);
+  });
+  card.addEventListener('mouseleave', () => {
+    clearTimeout(previewHoverTimer);
+    hidePreview();
+  });
+}
+window.addEventListener('scroll', hidePreview, { passive: true });
 
 function priceOrInfinity(g){
   return (g.finalPriceCents === null || g.finalPriceCents === undefined) ? Infinity : g.finalPriceCents;
@@ -541,6 +671,9 @@ function renderCards(items, append){
       </div>
     `;
     grid.appendChild(card);
+
+    const imgEl = card.querySelector('img');
+    attachHoverPreview(card, imgEl, it.trailerUrl);
   });
 }
 
